@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Verify &mdash; Cymatic Seal</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>CYMATIC SEAL</h1>
+      <p class="tagline">Seal. Protect. Create<span class="accent-red">.</span></p>
+      <div class="waveform-bar">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <span class="version-pill">v0.3 MODE</span>
+    </header>
+
+    <nav>
+      <a href="/">Seal</a>
+      <a href="/batch">Batch</a>
+      <a href="/verify" class="active">Verify</a>
+      <a href="/history">History</a>
+      <a href="/for-platforms">For Platforms</a>
+    </nav>
+
+    <main>
+      <div class="card">
+        <h2>Verify a Sealed Track</h2>
+        <p style="color:var(--text-dim);font-size:.88rem;font-weight:600;margin-bottom:20px;">
+          Upload a sealed audio file together with its certificate to confirm
+          the Cymatic Seal is intact and the track is protected.
+        </p>
+
+        <form id="verify-form" enctype="multipart/form-data">
+          <div class="dropzone" id="dropzone-audio">
+            <input type="file" name="file" id="v-audio" accept="audio/*" required />
+            <span class="icon">&#127925;</span>
+            <div class="label">Drop the sealed audio file</div>
+            <div class="filename" id="v-audio-name"></div>
+          </div>
+
+          <div class="dropzone" id="dropzone-cert">
+            <input type="file" name="certificate" id="v-cert" accept=".json" required />
+            <span class="icon">&#128274;</span>
+            <div class="label">Drop the .cert.json certificate</div>
+            <div class="filename" id="v-cert-name"></div>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="verify-btn">
+            Verify Seal
+          </button>
+        </form>
+
+        <div class="spinner" id="v-spinner">
+          <div class="wave-loader">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+
+        <div class="result" id="verify-result">
+          <div class="result-badge" id="v-badge"></div>
+          <p id="v-reason" style="margin-bottom:12px;font-size:.88rem;color:var(--text-dim);font-weight:600;"></p>
+          <table class="meta-table" id="v-meta"></table>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <strong>Cymatic Seal</strong> — adversarial audio defense for creators. Built for platform integration.
+    </footer>
+  </div>
+
+  <script>
+    function setupDrop(dzId, inputId, nameId) {
+      const dz = document.getElementById(dzId);
+      const inp = document.getElementById(inputId);
+      const nm = document.getElementById(nameId);
+      inp.addEventListener('change', () => { nm.textContent = inp.files.length ? inp.files[0].name : ''; });
+      dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+      dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+      dz.addEventListener('drop', e => {
+        e.preventDefault();
+        dz.classList.remove('dragover');
+        inp.files = e.dataTransfer.files;
+        nm.textContent = inp.files.length ? inp.files[0].name : '';
+      });
+    }
+    setupDrop('dropzone-audio', 'v-audio', 'v-audio-name');
+    setupDrop('dropzone-cert',  'v-cert',  'v-cert-name');
+
+    document.getElementById('verify-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn   = document.getElementById('verify-btn');
+      const spin  = document.getElementById('v-spinner');
+      const res   = document.getElementById('verify-result');
+      const badge = document.getElementById('v-badge');
+      const reason = document.getElementById('v-reason');
+      const meta  = document.getElementById('v-meta');
+
+      btn.disabled = true;
+      spin.style.display = 'block';
+      res.classList.remove('show');
+
+      const form = new FormData(e.target);
+
+      try {
+        const resp = await fetch('/api/verify', { method: 'POST', body: form });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+          throw new Error(err.detail || resp.statusText);
+        }
+        const data = await resp.json();
+
+        if (data.verified) {
+          badge.textContent = 'VERIFIED';
+          badge.className = 'result-badge verified';
+        } else {
+          badge.textContent = 'NOT VERIFIED';
+          badge.className = 'result-badge failed';
+        }
+        reason.textContent = data.reason;
+
+        if (data.certificate) {
+          const c = data.certificate;
+          meta.innerHTML = `
+            <tr><td>Algorithm</td><td>${c.algorithm}</td></tr>
+            <tr><td>Sealed at</td><td>${c.timestamp}</td></tr>
+            <tr><td>Artist</td><td>${c.artist || '(not set)'}</td></tr>
+            <tr><td>Title</td><td>${c.title || '(not set)'}</td></tr>
+            <tr><td>Duration</td><td>${c.duration_seconds}s</td></tr>
+          `;
+        } else {
+          meta.innerHTML = '';
+        }
+
+        res.classList.add('show');
+      } catch (err) {
+        alert('Verification failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        spin.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

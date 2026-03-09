@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Batch Seal &mdash; Cymatic Seal</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>CYMATIC SEAL</h1>
+      <p class="tagline">Seal. Protect. Create<span class="accent-red">.</span></p>
+      <div class="waveform-bar">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <span class="version-pill">v0.3 MODE</span>
+    </header>
+
+    <nav>
+      <a href="/">Seal</a>
+      <a href="/batch" class="active">Batch</a>
+      <a href="/verify">Verify</a>
+      <a href="/history">History</a>
+      <a href="/for-platforms">For Platforms</a>
+    </nav>
+
+    <main>
+      <div class="card">
+        <h2>Batch Seal</h2>
+        <p class="card-desc">Seal multiple tracks at once. Same options as single seal; processing may take several minutes.</p>
+
+        <form id="batch-form" enctype="multipart/form-data">
+          <input type="hidden" name="epsilon" value="0.008" />
+          <input type="hidden" name="margin_db" value="-4" />
+          <input type="hidden" name="lowpass_cutoff_hz" value="6000" />
+          <div class="dropzone" id="dropzone-batch">
+            <input type="file" name="files" id="batch-input" accept="audio/*" multiple required />
+            <span class="icon">&#127926;</span>
+            <div class="label">Drop multiple audio files here or click to browse</div>
+            <div class="filename" id="batch-filenames"></div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="b-artist">Artist / Circle</label>
+              <input type="text" name="artist" id="b-artist" placeholder="e.g. Pinocchio-P" />
+            </div>
+            <div>
+              <label for="b-method">Attack Method</label>
+              <select name="method" id="b-method">
+                <option value="fgsm" selected>FGSM (fast)</option>
+                <option value="ifgsm">I-FGSM (stronger)</option>
+              </select>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="batch-btn">
+            Seal All Tracks
+          </button>
+        </form>
+
+        <div class="spinner" id="batch-spinner">
+          <div class="wave-loader">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+        <div class="progress-text" id="batch-progress">Processing batch &mdash; this may take a while.</div>
+
+        <div class="batch-results" id="batch-results" style="display:none;"></div>
+      </div>
+    </main>
+
+    <footer>
+      <strong>Cymatic Seal</strong> — adversarial audio defense for creators. Built for platform integration.
+    </footer>
+  </div>
+
+  <script>
+    const bInput = document.getElementById('batch-input');
+    const bNames = document.getElementById('batch-filenames');
+    const bDz = document.getElementById('dropzone-batch');
+
+    bInput.addEventListener('change', () => {
+      if (bInput.files.length) {
+        bNames.textContent = bInput.files.length + ' file(s) selected';
+      } else {
+        bNames.textContent = '';
+      }
+    });
+    bDz.addEventListener('dragover', e => { e.preventDefault(); bDz.classList.add('dragover'); });
+    bDz.addEventListener('dragleave', () => bDz.classList.remove('dragover'));
+    bDz.addEventListener('drop', e => {
+      e.preventDefault();
+      bDz.classList.remove('dragover');
+      bInput.files = e.dataTransfer.files;
+      bNames.textContent = bInput.files.length + ' file(s) selected';
+    });
+
+    document.getElementById('batch-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = document.getElementById('batch-btn');
+      const spin = document.getElementById('batch-spinner');
+      const prog = document.getElementById('batch-progress');
+      const resultsDiv = document.getElementById('batch-results');
+
+      btn.disabled = true;
+      spin.style.display = 'block';
+      prog.style.display = 'block';
+      resultsDiv.style.display = 'none';
+
+      const form = new FormData(e.target);
+
+      try {
+        const resp = await fetch('/api/seal/batch', { method: 'POST', body: form });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+          throw new Error(err.detail || resp.statusText);
+        }
+        const data = await resp.json();
+
+        let html = '';
+        for (const r of data.results) {
+          if (r.error) {
+            html += `<div class="batch-item">
+              <span class="batch-filename">${r.filename || '—'}</span>
+              <span class="batch-status fail">FAILED</span>
+            </div>`;
+          } else {
+            html += `<div class="batch-item">
+              <span class="batch-filename">${r.filename || '—'}</span>
+              <span class="batch-status ok">SEALED</span>
+              <a class="btn btn-outline btn-sm" href="${r.download_audio}" download>Audio</a>
+              <a class="btn btn-outline btn-sm" href="${r.download_certificate}" download>Cert</a>
+            </div>`;
+          }
+        }
+
+        resultsDiv.innerHTML = html;
+        resultsDiv.style.display = 'block';
+      } catch (err) {
+        alert('Batch seal failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        spin.style.display = 'none';
+        prog.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

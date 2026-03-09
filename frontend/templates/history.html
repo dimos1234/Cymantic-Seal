@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>History &mdash; Cymatic Seal</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>CYMATIC SEAL</h1>
+      <p class="tagline">Seal. Protect. Create<span class="accent-red">.</span></p>
+      <div class="waveform-bar">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <span class="version-pill">v0.3 MODE</span>
+    </header>
+
+    <nav>
+      <a href="/">Seal</a>
+      <a href="/batch">Batch</a>
+      <a href="/verify">Verify</a>
+      <a href="/history" class="active">History</a>
+      <a href="/for-platforms">For Platforms</a>
+    </nav>
+
+    <main>
+      <div class="card">
+        <h2>Seal History</h2>
+        <p style="color:var(--text-dim);font-size:.85rem;font-weight:600;margin-bottom:16px;">
+          Past seals tied to your IP. Download sealed audio and certificates from recent jobs.
+        </p>
+
+        <div id="history-content">
+          <div class="empty-state">Loading...</div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <strong>Cymatic Seal</strong> &mdash; adversarial audio defense for Vocaloid &amp; Doujin creators.
+    </footer>
+  </div>
+
+  <script>
+    async function loadHistory() {
+      const container = document.getElementById('history-content');
+      try {
+        const resp = await fetch('/api/history');
+        const data = await resp.json();
+        const jobs = data.jobs || [];
+
+        if (jobs.length === 0) {
+          container.innerHTML = '<div class="empty-state">No seals yet. Go seal your first track!</div>';
+          return;
+        }
+
+        let html = `<table class="history-table">
+          <thead><tr>
+            <th>Date</th>
+            <th>File</th>
+            <th>Duration</th>
+            <th>Actions</th>
+          </tr></thead><tbody>`;
+
+        for (const j of jobs) {
+          const date = new Date(j.created_at).toLocaleDateString();
+          html += `<tr>
+            <td>${date}</td>
+            <td>${j.original_filename || '—'}</td>
+            <td>${j.duration_seconds ? j.duration_seconds.toFixed(1) + 's' : '—'}</td>
+            <td>
+              <a class="btn btn-outline btn-sm" href="/api/download/${j.job_id}/audio" download>Audio</a>
+              <a class="btn btn-outline btn-sm" href="/api/download/${j.job_id}/certificate" download>Cert</a>
+            </td>
+          </tr>`;
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = '<div class="empty-state">Failed to load history.</div>';
+      }
+    }
+    loadHistory();
+  </script>
+</body>
+</html>

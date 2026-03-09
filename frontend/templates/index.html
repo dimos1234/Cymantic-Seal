@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cymatic Seal</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>CYMATIC SEAL</h1>
+      <p class="tagline">Seal. Protect. Create<span class="accent-red">.</span></p>
+      <div class="waveform-bar">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <span class="version-pill">v0.3 MODE</span>
+    </header>
+
+    <nav>
+      <a href="/" class="active">Seal</a>
+      <a href="/batch">Batch</a>
+      <a href="/verify">Verify</a>
+      <a href="/history">History</a>
+      <a href="/for-platforms">For Platforms</a>
+    </nav>
+
+    <main>
+      <div class="card">
+        <h2>Seal Your Track</h2>
+        <p class="card-desc">Protect your audio from AI training and voice cloning. The sealed file sounds the same to listeners but breaks source-separation and scraping models.</p>
+
+        <form id="seal-form" enctype="multipart/form-data">
+          <div class="dropzone" id="dropzone-seal">
+            <input type="file" name="file" id="file-input" accept="audio/*" required />
+            <span class="icon">&#127925;</span>
+            <div class="label">Drop your audio file here or click to browse</div>
+            <div class="filename" id="filename-display"></div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="artist">Artist / Circle</label>
+              <input type="text" name="artist" id="artist" placeholder="e.g. Pinocchio-P" />
+            </div>
+            <div>
+              <label for="title">Track Title</label>
+              <input type="text" name="title" id="title" placeholder="e.g. God-ish" />
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="method">Attack method</label>
+              <select name="method" id="method">
+                <option value="fgsm" selected>FGSM (one step, fast)</option>
+                <option value="ifgsm">I-FGSM (iterative, stronger)</option>
+              </select>
+              <p class="form-hint">FGSM is faster; I-FGSM usually degrades separation more at the cost of time.</p>
+            </div>
+            <div>
+              <label for="steps">I-FGSM steps</label>
+              <input type="number" name="steps" id="steps" value="3" min="1" max="20" />
+              <p class="form-hint">More steps = stronger seal, longer processing. Ignored if method is FGSM.</p>
+            </div>
+          </div>
+
+          <div class="checkbox-row">
+            <input type="checkbox" name="pro" id="pro-check" value="true" />
+            <label for="pro-check" style="margin-bottom:0;text-transform:none;font-size:.88rem;">
+              Pro seal (stronger protection)
+            </label>
+            <span class="pro-badge">STRONGER</span>
+          </div>
+          <p class="form-hint" style="margin-top:-8px;">Uses more steps and slightly higher perturbation for maximum separation degradation.</p>
+
+          <details class="advanced-options">
+            <summary>Advanced options</summary>
+            <div class="advanced-inner">
+              <div class="row">
+                <div>
+                  <label for="epsilon">Epsilon</label>
+                  <input type="number" name="epsilon" id="epsilon" value="0.008" min="0.001" max="0.05" step="0.001" />
+                  <p class="form-hint">Max perturbation amplitude (0.001–0.05). Lower = less audible, weaker seal. Default 0.008.</p>
+                </div>
+                <div>
+                  <label for="margin_db">Margin (dB)</label>
+                  <input type="number" name="margin_db" id="margin_db" value="-4" min="-12" max="0" step="0.5" />
+                  <p class="form-hint">Safety margin below masking threshold. More negative = quieter perturbation, more conservative. Default -4.</p>
+                </div>
+              </div>
+              <div>
+                <label for="lowpass_cutoff_hz">Low-pass cutoff (Hz)</label>
+                <input type="number" name="lowpass_cutoff_hz" id="lowpass_cutoff_hz" value="6000" min="2000" max="12000" step="500" />
+                <p class="form-hint">Perturbation is low-pass filtered above this frequency to reduce hiss. Lower = less high-frequency content. Default 6000.</p>
+              </div>
+            </div>
+          </details>
+
+          <button type="submit" class="btn btn-primary" id="seal-btn">
+            Apply Cymatic Seal
+          </button>
+        </form>
+
+        <div class="spinner" id="spinner">
+          <div class="wave-loader">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+        <div class="progress-text" id="progress-text">Sealing your track — this may take 1–5 minutes on CPU.</div>
+
+        <div class="result" id="seal-result">
+          <div class="result-badge verified">SEAL APPLIED</div>
+          <table class="meta-table" id="seal-meta"></table>
+          <div class="downloads" id="seal-downloads"></div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <strong>Cymatic Seal</strong> — adversarial audio defense for creators. Built for platform integration.
+    </footer>
+  </div>
+
+  <script>
+    const dz = document.getElementById('dropzone-seal');
+    const fi = document.getElementById('file-input');
+    const fn = document.getElementById('filename-display');
+
+    fi.addEventListener('change', () => {
+      fn.textContent = fi.files.length ? fi.files[0].name : '';
+    });
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault();
+      dz.classList.remove('dragover');
+      fi.files = e.dataTransfer.files;
+      fn.textContent = fi.files.length ? fi.files[0].name : '';
+    });
+
+    document.getElementById('seal-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn  = document.getElementById('seal-btn');
+      const spin = document.getElementById('spinner');
+      const prog = document.getElementById('progress-text');
+      const res  = document.getElementById('seal-result');
+      const meta = document.getElementById('seal-meta');
+      const dl   = document.getElementById('seal-downloads');
+
+      btn.disabled = true;
+      spin.style.display = 'block';
+      prog.style.display = 'block';
+      res.classList.remove('show');
+
+      const form = new FormData(e.target);
+      if (!document.getElementById('pro-check').checked) {
+        form.set('pro', 'false');
+      }
+
+      try {
+        const resp = await fetch('/api/seal', { method: 'POST', body: form });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+          throw new Error(err.detail || resp.statusText);
+        }
+        const data = await resp.json();
+        const cert = JSON.parse(data.certificate);
+
+        meta.innerHTML = `
+          <tr><td>Duration</td><td>${cert.duration_seconds}s</td></tr>
+          <tr><td>Algorithm</td><td>${cert.algorithm}</td></tr>
+          <tr><td>Perturbation (mean)</td><td>${cert.perturbation_stats.mean_abs.toFixed(6)}</td></tr>
+          <tr><td>Perturbation (max)</td><td>${cert.perturbation_stats.max_abs.toFixed(6)}</td></tr>
+          <tr><td>Sealed at</td><td>${cert.timestamp}</td></tr>
+        `;
+
+        dl.innerHTML = `
+          <a class="btn btn-outline btn-sm" href="${data.download_audio}" download>Download Sealed Audio</a>
+          <a class="btn btn-outline btn-sm" href="${data.download_certificate}" download>Download Certificate</a>
+        `;
+
+        res.classList.add('show');
+      } catch (err) {
+        alert('Seal failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        spin.style.display = 'none';
+        prog.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>
